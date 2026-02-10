@@ -11,6 +11,7 @@ ignore:
   - .github
   - .claude
   - docs
+  - screenshots
   - Makefile
   - "*.md"
   - .DS_Store

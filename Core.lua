@@ -19,9 +19,11 @@ SilencerDB = SilencerDB or {}
 
 local isEnabled = false
 local queue = {}
+local silencedQueue = {}
 local silencedCount = 0
 local matchedCount = 0
 local filterRegistered = false
+local viewMode = "matched" -- "matched" or "silenced"
 
 local function InitializeDB()
     SilencerDB.keyword = SilencerDB.keyword or "inv"
@@ -104,8 +106,25 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
         Silencer:UpdateCounters()
         return true
     else
-        -- No match: suppress silently
+        -- No match: store and suppress
         silencedCount = silencedCount + 1
+
+        local name, realm = strsplit("-", playerName, 2)
+
+        local entry = {
+            name = name,
+            realm = realm or "",
+            fullName = playerName,
+            message = msg,
+            time = GetTime(),
+        }
+
+        tinsert(silencedQueue, entry)
+        if #silencedQueue > MAX_QUEUE then
+            tremove(silencedQueue, 1)
+        end
+
+        Silencer:UpdateList()
         Silencer:UpdateCounters()
         return true
     end
@@ -120,6 +139,7 @@ function Silencer:EnableFilter(silent)
     SilencerDB.enabled = true
     silencedCount = 0
     matchedCount = 0
+    viewMode = "matched"
     self:UpdateToggleButton()
     self:UpdateCounters()
     if not silent then
@@ -135,8 +155,10 @@ function Silencer:DisableFilter()
     isEnabled = false
     SilencerDB.enabled = false
     wipe(queue)
+    wipe(silencedQueue)
     silencedCount = 0
     matchedCount = 0
+    viewMode = "matched"
     self:UpdateList()
     self:UpdateToggleButton()
     self:UpdateCounters()
@@ -186,7 +208,9 @@ SlashCmdList["SILENCER"] = function(msg)
 
     elseif msg == "clear" then
         wipe(queue)
+        wipe(silencedQueue)
         matchedCount = 0
+        silencedCount = 0
         Silencer:UpdateList()
         Silencer:UpdateCounters()
         print(ADDON_PREFIX .. "Queue cleared")
@@ -370,8 +394,8 @@ function Silencer:CreateQueueRow(parent, index)
     row.dismissBtn:SetPoint("RIGHT", -2, 0)
     row.dismissBtn:SetText("X")
     row.dismissBtn:SetScript("OnClick", function()
-        if row.queueIndex and queue[row.queueIndex] then
-            tremove(queue, row.queueIndex)
+        if row.queueIndex and row.activeQueue and row.activeQueue[row.queueIndex] then
+            tremove(row.activeQueue, row.queueIndex)
             Silencer:UpdateList()
             Silencer:UpdateCounters()
         end
@@ -420,11 +444,53 @@ end
 --------------------------------------------------------------
 
 function Silencer:BuildFooter(parent)
-    local counterText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    counterText:SetPoint("BOTTOMLEFT", 12, 8)
-    counterText:SetTextColor(0.7, 0.7, 0.7)
-    counterText:SetText("0 matched | 0 silenced")
-    self.counterText = counterText
+    -- Matched counter (clickable)
+    local matchedBtn = CreateFrame("Button", nil, parent)
+    matchedBtn:SetPoint("BOTTOMLEFT", 8, 5)
+    matchedBtn:SetSize(100, 16)
+    matchedBtn.text = matchedBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    matchedBtn.text:SetAllPoints()
+    matchedBtn.text:SetJustifyH("LEFT")
+    matchedBtn.text:SetText("0 matched")
+    matchedBtn:SetScript("OnClick", function()
+        viewMode = "matched"
+        Silencer:UpdateList()
+        Silencer:UpdateCounters()
+    end)
+    matchedBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(1, 1, 1)
+    end)
+    matchedBtn:SetScript("OnLeave", function(self)
+        Silencer:UpdateCounterColors()
+    end)
+    self.matchedBtn = matchedBtn
+
+    -- Separator
+    local sep = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sep:SetPoint("LEFT", matchedBtn, "RIGHT", 2, 0)
+    sep:SetText("|")
+    sep:SetTextColor(0.5, 0.5, 0.5)
+
+    -- Silenced counter (clickable)
+    local silencedBtn = CreateFrame("Button", nil, parent)
+    silencedBtn:SetPoint("LEFT", sep, "RIGHT", 2, 0)
+    silencedBtn:SetSize(100, 16)
+    silencedBtn.text = silencedBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    silencedBtn.text:SetAllPoints()
+    silencedBtn.text:SetJustifyH("LEFT")
+    silencedBtn.text:SetText("0 silenced")
+    silencedBtn:SetScript("OnClick", function()
+        viewMode = "silenced"
+        Silencer:UpdateList()
+        Silencer:UpdateCounters()
+    end)
+    silencedBtn:SetScript("OnEnter", function(self)
+        self.text:SetTextColor(1, 1, 1)
+    end)
+    silencedBtn:SetScript("OnLeave", function(self)
+        Silencer:UpdateCounterColors()
+    end)
+    self.silencedBtn = silencedBtn
 end
 
 --------------------------------------------------------------
@@ -435,7 +501,9 @@ function Silencer:UpdateList()
     if not self.frame or not self.frame:IsShown() then return end
     if not self.scrollFrame then return end
 
-    local numItems = #queue
+    local activeQueue = viewMode == "silenced" and silencedQueue or queue
+    local showInvite = viewMode == "matched"
+    local numItems = #activeQueue
     local offset = FauxScrollFrame_GetOffset(self.scrollFrame)
 
     FauxScrollFrame_Update(self.scrollFrame, numItems, VISIBLE_ROWS, ROW_HEIGHT)
@@ -443,12 +511,13 @@ function Silencer:UpdateList()
     for i = 1, VISIBLE_ROWS do
         local row = self.rows[i]
         local index = offset + i
-        local entry = queue[index]
+        local entry = activeQueue[index]
 
         if entry then
             row.queueIndex = index
             row.senderName = entry.name
             row.fullMessage = entry.message
+            row.activeQueue = activeQueue
 
             row.nameText:SetText(entry.name)
 
@@ -459,11 +528,18 @@ function Silencer:UpdateList()
             end
             row.msgText:SetText(displayMsg)
 
+            if showInvite then
+                row.inviteBtn:Show()
+            else
+                row.inviteBtn:Hide()
+            end
+
             row:Show()
         else
             row.queueIndex = nil
             row.senderName = nil
             row.fullMessage = nil
+            row.activeQueue = nil
             row:Hide()
         end
     end
@@ -478,8 +554,29 @@ function Silencer:UpdateList()
 end
 
 function Silencer:UpdateCounters()
-    if self.counterText then
-        self.counterText:SetText(matchedCount .. " matched | " .. silencedCount .. " silenced")
+    if self.matchedBtn then
+        self.matchedBtn.text:SetText(#queue .. " matched")
+    end
+    if self.silencedBtn then
+        self.silencedBtn.text:SetText(#silencedQueue .. " silenced")
+    end
+    self:UpdateCounterColors()
+end
+
+function Silencer:UpdateCounterColors()
+    if self.matchedBtn then
+        if viewMode == "matched" then
+            self.matchedBtn.text:SetTextColor(0.2, 0.8, 1.0)
+        else
+            self.matchedBtn.text:SetTextColor(0.5, 0.5, 0.5)
+        end
+    end
+    if self.silencedBtn then
+        if viewMode == "silenced" then
+            self.silencedBtn.text:SetTextColor(1.0, 0.6, 0.2)
+        else
+            self.silencedBtn.text:SetTextColor(0.5, 0.5, 0.5)
+        end
     end
 end
 
@@ -498,7 +595,11 @@ end
 
 function Silencer:UpdateEmptyText()
     if self.emptyText then
-        self.emptyText:SetText("No whispers matching '" .. (SilencerDB.keyword or "") .. "'")
+        if viewMode == "silenced" then
+            self.emptyText:SetText("No silenced whispers")
+        else
+            self.emptyText:SetText("No whispers matching '" .. (SilencerDB.keyword or "") .. "'")
+        end
     end
 end
 
