@@ -3,6 +3,7 @@
 ## Notes: Whisper gatekeeper - filter whispers by keyword, review matches, invite or dismiss
 ## Author: kaldown
 ## Version: @project-version@
+## IconTexture: Interface\Icons\Spell_Holy_Silence
 ## SavedVariables: SilencerDB
 ## X-Curse-Project-ID: CHANGEME
 ## X-Wago-ID: CHANGEME

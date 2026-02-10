@@ -36,7 +36,7 @@ end
 
 local dataObject = LDB:NewDataObject("Silencer", {
     type = "launcher",
-    icon = "Interface\\Icons\\Spell_Shadow_Silence",
+    icon = "Interface\\Icons\\Spell_Holy_Silence",
     OnClick = function(_, button)
         if button == "LeftButton" then
             Silencer:ToggleFrame()
