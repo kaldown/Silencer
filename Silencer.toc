@@ -5,8 +5,8 @@
 ## Version: @project-version@
 ## IconTexture: Interface\Icons\Spell_Holy_Silence
 ## SavedVariables: SilencerDB
-## X-Curse-Project-ID: CHANGEME
-## X-Wago-ID: CHANGEME
+## X-Curse-Project-ID: 1459086
+## X-Wago-ID: n6VLMZGd
 
 Libs\LibStub\LibStub.lua
 Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
