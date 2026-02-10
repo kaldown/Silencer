@@ -6,6 +6,7 @@ local ADDON_NAME, Silencer = ...
 local ADDON_PREFIX = "|cFF33CCFF[Silencer]|r "
 local GetMetadata = C_AddOns and C_AddOns.GetAddOnMetadata or GetAddOnMetadata
 local VERSION = GetMetadata and GetMetadata(ADDON_NAME, "Version") or "dev"
+if VERSION:find("^@") then VERSION = "dev" end
 local MAX_QUEUE = 50
 
 local LDB = LibStub("LibDataBroker-1.1")
