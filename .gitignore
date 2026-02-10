@@ -17,5 +17,8 @@ docs/plans/
 *.swo
 *~
 
+# Libraries (fetched via .pkgmeta externals)
+Libs/
+
 # Packager output
 .release/

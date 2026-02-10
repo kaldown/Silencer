@@ -1,0 +1,17 @@
+## Interface: 110100
+## Interface-Classic: 11503
+## Interface-Cata: 40401
+## Title: Silencer
+## Notes: Whisper gatekeeper - filter whispers by keyword, review matches, invite or dismiss
+## Author: kaldown
+## Version: @project-version@
+## SavedVariables: SilencerDB
+## X-Curse-Project-ID: CHANGEME
+## X-Wago-ID: CHANGEME
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.lua
+Libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+Libs\LibDBIcon-1.0\lib.xml
+
+Core.lua
