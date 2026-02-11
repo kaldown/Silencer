@@ -31,6 +31,7 @@ local function InitializeDB()
     SilencerDB.enabled = SilencerDB.enabled or false
     SilencerDB.position = SilencerDB.position or nil
     SilencerDB.minimap = SilencerDB.minimap or { hide = false }
+    SilencerDB.blockedClasses = SilencerDB.blockedClasses or {}
 end
 
 --------------------------------------------------------------
@@ -71,8 +72,39 @@ local function InvitePlayer(name)
 end
 
 --------------------------------------------------------------
+-- Class data
+--------------------------------------------------------------
+
+local CLASS_ORDER = {
+    "WARRIOR", "PALADIN", "HUNTER", "ROGUE", "PRIEST",
+    "SHAMAN", "MAGE", "WARLOCK", "DRUID",
+}
+
+local CLASS_ICONS = {
+    WARRIOR  = "Interface\\Icons\\ClassIcon_Warrior",
+    PALADIN  = "Interface\\Icons\\ClassIcon_Paladin",
+    HUNTER   = "Interface\\Icons\\ClassIcon_Hunter",
+    ROGUE    = "Interface\\Icons\\ClassIcon_Rogue",
+    PRIEST   = "Interface\\Icons\\ClassIcon_Priest",
+    SHAMAN   = "Interface\\Icons\\ClassIcon_Shaman",
+    MAGE     = "Interface\\Icons\\ClassIcon_Mage",
+    WARLOCK  = "Interface\\Icons\\ClassIcon_Warlock",
+    DRUID    = "Interface\\Icons\\ClassIcon_Druid",
+}
+
+--------------------------------------------------------------
 -- Chat filter engine
 --------------------------------------------------------------
+
+local function GetSenderClass(guid)
+    if guid and GetPlayerInfoByGUID then
+        local localizedClass, englishClass = GetPlayerInfoByGUID(guid)
+        if englishClass then
+            return englishClass, localizedClass
+        end
+    end
+    return "UNKNOWN", "Unknown"
+end
 
 local function WhisperFilter(chatFrame, event, msg, playerName, ...)
     if not isEnabled then
@@ -84,11 +116,13 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
         return false
     end
 
-    if strlower(msg):find(strlower(keyword), 1, true) then
-        -- Match: add to queue, suppress from chat
-        matchedCount = matchedCount + 1
+    -- GUID is the 10th vararg (event arg12, after msg and playerName)
+    local guid = select(10, ...)
+    local class, classLocal = GetSenderClass(guid)
+    local name, realm = strsplit("-", playerName, 2)
 
-        local name, realm = strsplit("-", playerName, 2)
+    if strlower(msg):find(strlower(keyword), 1, true) then
+        local isClassBlocked = class ~= "UNKNOWN" and SilencerDB.blockedClasses[class]
 
         local entry = {
             name = name,
@@ -96,11 +130,25 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
             fullName = playerName,
             message = msg,
             time = GetTime(),
+            class = class,
+            classLocal = classLocal,
+            classBlocked = isClassBlocked or false,
         }
 
-        tinsert(queue, entry)
-        if #queue > MAX_QUEUE then
-            tremove(queue, 1)
+        if isClassBlocked then
+            -- Keyword matched but class blocked: route to silenced
+            silencedCount = silencedCount + 1
+            tinsert(silencedQueue, entry)
+            if #silencedQueue > MAX_QUEUE then
+                tremove(silencedQueue, 1)
+            end
+        else
+            -- Keyword matched, class allowed: matched queue
+            matchedCount = matchedCount + 1
+            tinsert(queue, entry)
+            if #queue > MAX_QUEUE then
+                tremove(queue, 1)
+            end
         end
 
         Silencer:UpdateList()
@@ -110,14 +158,14 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
         -- No match: store and suppress
         silencedCount = silencedCount + 1
 
-        local name, realm = strsplit("-", playerName, 2)
-
         local entry = {
             name = name,
             realm = realm or "",
             fullName = playerName,
             message = msg,
             time = GetTime(),
+            class = class,
+            classLocal = classLocal,
         }
 
         tinsert(silencedQueue, entry)
@@ -207,6 +255,19 @@ SlashCmdList["SILENCER"] = function(msg)
         print(ADDON_PREFIX .. "Keyword: |cFFFFFF00" .. (SilencerDB.keyword or "(none)") .. "|r")
         print(ADDON_PREFIX .. "Queue: " .. #queue .. " matched | " .. silencedCount .. " silenced")
 
+    elseif msg == "block" then
+        local blocked = {}
+        for _, class in ipairs(CLASS_ORDER) do
+            if SilencerDB.blockedClasses[class] then
+                tinsert(blocked, class:sub(1, 1) .. class:sub(2):lower())
+            end
+        end
+        if #blocked > 0 then
+            print(ADDON_PREFIX .. "Blocked classes: |cFFFF4444" .. table.concat(blocked, ", ") .. "|r")
+        else
+            print(ADDON_PREFIX .. "No classes blocked")
+        end
+
     elseif msg == "clear" then
         wipe(queue)
         wipe(silencedQueue)
@@ -222,6 +283,7 @@ SlashCmdList["SILENCER"] = function(msg)
         print("  /sil on - Enable filter")
         print("  /sil off - Disable filter")
         print("  /sil keyword <word> - Set keyword")
+        print("  /sil block - Show blocked classes")
         print("  /sil status - Show status")
         print("  /sil clear - Clear queue")
     end
@@ -232,10 +294,10 @@ end
 --------------------------------------------------------------
 
 local FRAME_WIDTH = 380
-local FRAME_HEIGHT = 350
+local FRAME_HEIGHT = 378
 local ROW_HEIGHT = 28
 local VISIBLE_ROWS = 8
-local HEADER_HEIGHT = 60
+local HEADER_HEIGHT = 88
 local FOOTER_HEIGHT = 25
 
 --------------------------------------------------------------
@@ -301,15 +363,22 @@ function Silencer:BuildHeader(parent)
     local closeBtn = CreateFrame("Button", nil, parent, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", -2, -2)
 
-    -- ON/OFF toggle
-    local toggleBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
-    toggleBtn:SetSize(50, 22)
-    toggleBtn:SetPoint("TOPRIGHT", -30, -8)
-    toggleBtn:SetText(isEnabled and "ON" or "OFF")
-    toggleBtn:SetScript("OnClick", function()
+    -- Status indicator (button to toggle)
+    local statusLabel = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    statusLabel:SetSize(90, 22)
+    statusLabel:SetPoint("TOPRIGHT", -30, -8)
+    statusLabel:SetScript("OnClick", function()
         Silencer:Toggle()
     end)
-    self.toggleBtn = toggleBtn
+    statusLabel:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Click to toggle filtering", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    statusLabel:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    self.statusLabel = statusLabel
 
     -- Keyword label
     local kwLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -337,6 +406,93 @@ function Silencer:BuildHeader(parent)
         eb:ClearFocus()
     end)
     self.kwEditBox = kwEditBox
+
+    -- Class filter toggle buttons
+    self:BuildClassButtons(parent)
+end
+
+--------------------------------------------------------------
+-- Class filter toggle buttons
+--------------------------------------------------------------
+
+function Silencer:BuildClassButtons(parent)
+    local BUTTON_SIZE = 24
+    local BUTTON_SPACING = 4
+    local totalWidth = #CLASS_ORDER * BUTTON_SIZE + (#CLASS_ORDER - 1) * BUTTON_SPACING
+    local startX = (FRAME_WIDTH - totalWidth) / 2
+
+    self.classButtons = {}
+    for i, class in ipairs(CLASS_ORDER) do
+        local btn = CreateFrame("Button", nil, parent)
+        btn:SetSize(BUTTON_SIZE, BUTTON_SIZE)
+        btn:SetPoint("TOPLEFT", startX + (i - 1) * (BUTTON_SIZE + BUTTON_SPACING), -58)
+
+        local icon = btn:CreateTexture(nil, "ARTWORK")
+        icon:SetAllPoints()
+        icon:SetTexture(CLASS_ICONS[class])
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        btn.icon = icon
+
+        local border = btn:CreateTexture(nil, "BACKGROUND")
+        border:SetPoint("TOPLEFT", -1, 1)
+        border:SetPoint("BOTTOMRIGHT", 1, -1)
+        border:SetColorTexture(0.4, 0.4, 0.4, 0.8)
+        btn.border = border
+
+        btn.className = class
+        btn:SetScript("OnClick", function(self)
+            if SilencerDB.blockedClasses[class] then
+                SilencerDB.blockedClasses[class] = nil
+            else
+                SilencerDB.blockedClasses[class] = true
+            end
+            Silencer:UpdateClassButton(btn)
+            -- Refresh tooltip while hovering
+            if GameTooltip:GetOwner() == self then
+                GameTooltip:ClearLines()
+                local localName = class:sub(1, 1) .. class:sub(2):lower()
+                local status = SilencerDB.blockedClasses[class] and "|cFFFF4444Blocked|r" or "|cFF00FF00Allowed|r"
+                GameTooltip:AddLine(localName .. " - " .. status)
+                GameTooltip:AddLine("Click to toggle", 0.7, 0.7, 0.7)
+                GameTooltip:Show()
+            end
+        end)
+
+        btn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            local localName = class:sub(1, 1) .. class:sub(2):lower()
+            local status = SilencerDB.blockedClasses[class] and "|cFFFF4444Blocked|r" or "|cFF00FF00Allowed|r"
+            GameTooltip:AddLine(localName .. " - " .. status)
+            GameTooltip:AddLine("Click to toggle", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
+        self.classButtons[i] = btn
+        self:UpdateClassButton(btn)
+    end
+end
+
+function Silencer:UpdateClassButton(btn)
+    local blocked = SilencerDB.blockedClasses[btn.className]
+    if blocked then
+        btn.icon:SetDesaturated(true)
+        btn.icon:SetVertexColor(0.6, 0.2, 0.2)
+        btn.border:SetColorTexture(0.6, 0.1, 0.1, 0.9)
+    else
+        btn.icon:SetDesaturated(false)
+        btn.icon:SetVertexColor(1, 1, 1)
+        btn.border:SetColorTexture(0.4, 0.4, 0.4, 0.8)
+    end
+end
+
+function Silencer:UpdateAllClassButtons()
+    if not self.classButtons then return end
+    for _, btn in ipairs(self.classButtons) do
+        self:UpdateClassButton(btn)
+    end
 end
 
 --------------------------------------------------------------
@@ -408,11 +564,11 @@ function Silencer:CreateQueueRow(parent, index)
     row.inviteBtn:SetPoint("RIGHT", row.dismissBtn, "LEFT", -3, 0)
     row.inviteBtn:SetText("Invite")
     row.inviteBtn:SetScript("OnClick", function()
-        if row.queueIndex and queue[row.queueIndex] then
-            local entry = queue[row.queueIndex]
+        if row.queueIndex and row.activeQueue and row.activeQueue[row.queueIndex] then
+            local entry = row.activeQueue[row.queueIndex]
             InvitePlayer(entry.fullName)
             print(ADDON_PREFIX .. "Invited |cFFFFFF00" .. entry.name .. "|r")
-            tremove(queue, row.queueIndex)
+            tremove(row.activeQueue, row.queueIndex)
             Silencer:UpdateList()
             Silencer:UpdateCounters()
         end
@@ -428,7 +584,18 @@ function Silencer:CreateQueueRow(parent, index)
     row:SetScript("OnEnter", function(self)
         if self.fullMessage then
             GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-            GameTooltip:AddLine(self.senderName or "", 0.6, 0.8, 1.0)
+            local nameColor = self.entryClass and RAID_CLASS_COLORS[self.entryClass]
+            if nameColor then
+                GameTooltip:AddLine(self.senderName or "", nameColor.r, nameColor.g, nameColor.b)
+            else
+                GameTooltip:AddLine(self.senderName or "", 0.6, 0.8, 1.0)
+            end
+            if self.entryClassLocal and self.entryClassLocal ~= "Unknown" then
+                GameTooltip:AddLine(self.entryClassLocal, 0.7, 0.7, 0.7)
+            end
+            if self.entryClassBlocked then
+                GameTooltip:AddLine("Blocked class", 1.0, 0.3, 0.3)
+            end
             GameTooltip:AddLine(self.fullMessage, 1, 1, 1, true)
             GameTooltip:Show()
         end
@@ -519,8 +686,19 @@ function Silencer:UpdateList()
             row.senderName = entry.name
             row.fullMessage = entry.message
             row.activeQueue = activeQueue
+            row.entryClass = entry.class
+            row.entryClassLocal = entry.classLocal
+            row.entryClassBlocked = entry.classBlocked
 
             row.nameText:SetText(entry.name)
+
+            -- Class-colored name
+            local classColor = entry.class and RAID_CLASS_COLORS[entry.class]
+            if classColor then
+                row.nameText:SetTextColor(classColor.r, classColor.g, classColor.b)
+            else
+                row.nameText:SetTextColor(0.6, 0.8, 1.0)
+            end
 
             -- Truncate message for display
             local displayMsg = entry.message
@@ -541,6 +719,9 @@ function Silencer:UpdateList()
             row.senderName = nil
             row.fullMessage = nil
             row.activeQueue = nil
+            row.entryClass = nil
+            row.entryClassLocal = nil
+            row.entryClassBlocked = nil
             row:Hide()
         end
     end
@@ -582,8 +763,12 @@ function Silencer:UpdateCounterColors()
 end
 
 function Silencer:UpdateToggleButton()
-    if self.toggleBtn then
-        self.toggleBtn:SetText(isEnabled and "ON" or "OFF")
+    if self.statusLabel then
+        if isEnabled then
+            self.statusLabel:SetText("|cFF33FF33Silencing...|r")
+        else
+            self.statusLabel:SetText("Idle")
+        end
     end
 end
 
