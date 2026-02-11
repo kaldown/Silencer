@@ -26,7 +26,7 @@ Click the "silenced" counter to review whispers that didn't match your keyword.
 
 ## Installation
 
-1. Download from [CurseForge]() or [Wago]()
+1. Download from [CurseForge](https://www.curseforge.com/wow/addons/silencer-whispers) or [Wago](https://addons.wago.io/addons/silencer)
 2. Extract to your `Interface/AddOns/` folder
 3. Type `/sil` in-game to open
 
