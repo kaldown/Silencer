@@ -57,3 +57,7 @@ Click the "silenced" counter to review whispers that didn't match your keyword.
 ## Compatibility
 
 Works on Classic Era, TBC Classic, and Anniversary Edition.
+
+## License
+
+MIT - See [LICENSE](LICENSE) for details.

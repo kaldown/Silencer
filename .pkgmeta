@@ -1,4 +1,5 @@
 package-as: Silencer
+license-output: LICENSE
 
 externals:
   Libs/LibStub: https://repos.wowace.com/wow/libstub/tags/1.0
