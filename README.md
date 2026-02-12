@@ -1,8 +1,13 @@
 # Silencer
 
+[![CurseForge](https://img.shields.io/badge/CurseForge-Silencer-orange)](https://www.curseforge.com/wow/addons/silencer-whispers)
+[![Wago](https://img.shields.io/badge/Wago-Silencer-c1272d)](https://addons.wago.io/addons/silencer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PayPal](https://img.shields.io/badge/Donate-PayPal-00457C?logo=paypal&logoColor=white)](https://www.paypal.com/donate/?hosted_button_id=FG4KES3HNPLVG)
 
 If you find this useful, consider [supporting development](https://www.paypal.com/donate/?hosted_button_id=FG4KES3HNPLVG).
+
+Other addons: [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer | [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
 
 Whisper gatekeeper for World of Warcraft Classic. Set a keyword, and Silencer intercepts all incoming whispers - matching ones go to a review queue for quick invite, everything else is silenced.
 
