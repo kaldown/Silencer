@@ -7,7 +7,10 @@
 
 If you find this useful, consider [supporting development](https://www.paypal.com/donate/?hosted_button_id=FG4KES3HNPLVG).
 
-Other addons: [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer | [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
+Other addons:
+- [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer
+- [VendorSniper](https://www.curseforge.com/wow/addons/vendorsniper) - Vendor restock sniper
+- [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
 
 Whisper gatekeeper for World of Warcraft Classic. Set a keyword, and Silencer intercepts all incoming whispers - matching ones go to a review queue for quick invite, everything else is silenced.
 

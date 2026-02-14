@@ -5,7 +5,10 @@
 
 If you find this useful, consider [supporting development](https://www.paypal.com/donate/?hosted_button_id=FG4KES3HNPLVG).
 
-Other addons: [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer | [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
+Other addons:
+- [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer
+- [VendorSniper](https://www.curseforge.com/wow/addons/vendorsniper) - Vendor restock sniper
+- [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
 
 ---
 
