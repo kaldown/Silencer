@@ -25,6 +25,7 @@ local silencedCount = 0
 local matchedCount = 0
 local filterRegistered = false
 local viewMode = "matched" -- "matched" or "silenced"
+local filteredPlayers = {} -- name -> true, tracks who Silencer has filtered this session
 
 local function InitializeDB()
     SilencerDB.keyword = SilencerDB.keyword or "inv"
@@ -93,6 +94,29 @@ local CLASS_ICONS = {
 }
 
 --------------------------------------------------------------
+-- Ignore list helper
+--------------------------------------------------------------
+
+local function IsPlayerOnIgnoreList(name)
+    local numIgnores = C_FriendList and C_FriendList.GetNumIgnores and C_FriendList.GetNumIgnores()
+        or GetNumIgnores and GetNumIgnores()
+        or 0
+    local getIgnoreName = C_FriendList and C_FriendList.GetIgnoreName or GetIgnoreName
+    if not getIgnoreName then return false end
+    for i = 1, numIgnores do
+        local ignoreName = getIgnoreName(i)
+        if ignoreName then
+            local shortName = strsplit("-", ignoreName)
+            -- Exact match first, then case-insensitive fallback
+            if shortName == name or strlower(shortName) == strlower(name) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+--------------------------------------------------------------
 -- Chat filter engine
 --------------------------------------------------------------
 
@@ -120,6 +144,10 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
     local guid = select(10, ...)
     local class, classLocal = GetSenderClass(guid)
     local name, realm = strsplit("-", playerName, 2)
+    if not filteredPlayers[name] then
+        filteredPlayers[name] = true
+        Silencer:UpdatePartyIndicators()
+    end
 
     if strlower(msg):find(strlower(keyword), 1, true) then
         local isClassBlocked = class ~= "UNKNOWN" and SilencerDB.blockedClasses[class]
@@ -205,12 +233,14 @@ function Silencer:DisableFilter()
     SilencerDB.enabled = false
     wipe(queue)
     wipe(silencedQueue)
+    wipe(filteredPlayers)
     silencedCount = 0
     matchedCount = 0
     viewMode = "matched"
     self:UpdateList()
     self:UpdateToggleButton()
     self:UpdateCounters()
+    self:UpdatePartyIndicators()
     print(ADDON_PREFIX .. "Filter OFF - all whispers flowing normally")
 end
 
@@ -271,11 +301,57 @@ SlashCmdList["SILENCER"] = function(msg)
     elseif msg == "clear" then
         wipe(queue)
         wipe(silencedQueue)
+        wipe(filteredPlayers)
         matchedCount = 0
         silencedCount = 0
         Silencer:UpdateList()
         Silencer:UpdateCounters()
+        Silencer:UpdatePartyIndicators()
         print(ADDON_PREFIX .. "Queue cleared")
+
+    elseif msg == "debug" then
+        print(ADDON_PREFIX .. "--- Debug: Ignore list ---")
+        local numIgnores = C_FriendList and C_FriendList.GetNumIgnores and C_FriendList.GetNumIgnores()
+            or GetNumIgnores and GetNumIgnores() or 0
+        local getIgnoreName = C_FriendList and C_FriendList.GetIgnoreName or GetIgnoreName
+        print("  API: " .. (C_FriendList and C_FriendList.GetIgnoreName and "C_FriendList.GetIgnoreName" or GetIgnoreName and "GetIgnoreName" or "NONE"))
+        print("  NumIgnores: " .. tostring(numIgnores))
+        for i = 1, numIgnores do
+            print("  [" .. i .. "] " .. tostring(getIgnoreName(i)))
+        end
+
+        print(ADDON_PREFIX .. "--- Debug: Raid frames ---")
+        local raidFound = 0
+        for g = 1, 8 do
+            for m = 1, 5 do
+                local frameName = "CompactRaidGroup" .. g .. "Member" .. m
+                local frame = _G[frameName]
+                if frame and frame.unit and frame:IsVisible() then
+                    local name = UnitName(frame.unit)
+                    local ignored = name and IsPlayerOnIgnoreList(name) or false
+                    local filtered = name and filteredPlayers[name] or false
+                    local ind = raidIndicators[frameName]
+                    local indShown = ind and (ind.ignoreIcon:IsShown() or ind.silencerIcon:IsShown()) or false
+                    print("  " .. frameName .. " = " .. tostring(name) .. " ign=" .. tostring(ignored) .. " filt=" .. tostring(filtered) .. " shown=" .. tostring(indShown))
+                    raidFound = raidFound + 1
+                end
+            end
+        end
+        print("  Raid frames found: " .. raidFound)
+
+        print(ADDON_PREFIX .. "--- Debug: Party frames ---")
+        local pf = _G["PartyFrame"]
+        print("  PartyFrame=" .. tostring(pf and "exists" or "nil"))
+        for i = 1, 4 do
+            local mf = pf and pf["MemberFrame" .. i]
+            local name = UnitName("party" .. i)
+            local vis = mf and mf:IsVisible()
+            local ignored = name and IsPlayerOnIgnoreList(name) or false
+            local filtered = name and filteredPlayers[name] or false
+            local ind = partyIndicators[i]
+            local indShown = ind and (ind.ignoreIcon:IsShown() or ind.silencerIcon:IsShown()) or false
+            print("  MemberFrame" .. i .. " vis=" .. tostring(vis) .. " name=" .. tostring(name) .. " ign=" .. tostring(ignored) .. " filt=" .. tostring(filtered) .. " shown=" .. tostring(indShown))
+        end
 
     else
         print(ADDON_PREFIX .. "Commands:")
@@ -818,6 +894,223 @@ function Silencer:ToggleFrame()
 end
 
 --------------------------------------------------------------
+-- Party and raid frame indicators
+-- Party: overlays on PartyFrame.MemberFrame1-4 (5-player groups)
+-- Raid: overlays on CompactRaidGroup<G>Member<M> (raid groups)
+--------------------------------------------------------------
+
+local INDICATOR_SIZE = 14
+local RAID_INDICATOR_SIZE = 10
+local partyIndicators = {} -- [1-4] = { silencerIcon, ignoreIcon }
+local raidIndicators = {} -- [frameName] = { silencerIcon, ignoreIcon }
+
+local function CreatePartyIndicator(memberFrame)
+    if not memberFrame then return nil end
+
+    local indicator = {}
+
+    -- Silencer-filtered icon (bottom position, right side of frame)
+    local silBtn = CreateFrame("Button", nil, memberFrame)
+    silBtn:SetSize(INDICATOR_SIZE, INDICATOR_SIZE)
+    silBtn:SetPoint("TOPRIGHT", memberFrame, "TOPRIGHT", -2, -2)
+    silBtn:SetFrameLevel(memberFrame:GetFrameLevel() + 10)
+
+    local silIcon = silBtn:CreateTexture(nil, "ARTWORK")
+    silIcon:SetAllPoints()
+    silIcon:SetTexture("Interface\\Icons\\Spell_Holy_Silence")
+    silIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    local silBorder = silBtn:CreateTexture(nil, "BACKGROUND")
+    silBorder:SetPoint("TOPLEFT", -1, 1)
+    silBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    silBorder:SetColorTexture(0, 0, 0, 0.8)
+
+    silBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Whisper filtered", 0.2, 0.8, 1.0)
+        GameTooltip:Show()
+    end)
+    silBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    silBtn:Hide()
+    indicator.silencerIcon = silBtn
+
+    -- WoW ignored icon (above silencer icon)
+    local ignBtn = CreateFrame("Button", nil, memberFrame)
+    ignBtn:SetSize(INDICATOR_SIZE, INDICATOR_SIZE)
+    ignBtn:SetPoint("RIGHT", silBtn, "LEFT", -2, 0)
+    ignBtn:SetFrameLevel(memberFrame:GetFrameLevel() + 10)
+
+    local ignIcon = ignBtn:CreateTexture(nil, "ARTWORK")
+    ignIcon:SetAllPoints()
+    ignIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_7")
+
+    local ignBorder = ignBtn:CreateTexture(nil, "BACKGROUND")
+    ignBorder:SetPoint("TOPLEFT", -1, 1)
+    ignBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    ignBorder:SetColorTexture(0, 0, 0, 0.8)
+
+    ignBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("On ignore list", 1.0, 0.3, 0.3)
+        GameTooltip:Show()
+    end)
+    ignBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ignBtn:Hide()
+    indicator.ignoreIcon = ignBtn
+
+    return indicator
+end
+
+local function CreateRaidIndicator(frame)
+    if not frame then return nil end
+
+    local indicator = {}
+
+    -- Silencer-filtered icon (right side, bottom)
+    local silBtn = CreateFrame("Button", nil, frame)
+    silBtn:SetSize(RAID_INDICATOR_SIZE, RAID_INDICATOR_SIZE)
+    silBtn:SetPoint("RIGHT", frame, "RIGHT", -2, -4)
+    silBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
+
+    local silIcon = silBtn:CreateTexture(nil, "ARTWORK")
+    silIcon:SetAllPoints()
+    silIcon:SetTexture("Interface\\Icons\\Spell_Holy_Silence")
+    silIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    local silBorder = silBtn:CreateTexture(nil, "BACKGROUND")
+    silBorder:SetPoint("TOPLEFT", -1, 1)
+    silBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    silBorder:SetColorTexture(0, 0, 0, 0.8)
+
+    silBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("Whisper filtered", 0.2, 0.8, 1.0)
+        GameTooltip:Show()
+    end)
+    silBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    silBtn:Hide()
+    indicator.silencerIcon = silBtn
+
+    -- WoW ignored icon (right side, top)
+    local ignBtn = CreateFrame("Button", nil, frame)
+    ignBtn:SetSize(RAID_INDICATOR_SIZE, RAID_INDICATOR_SIZE)
+    ignBtn:SetPoint("RIGHT", frame, "RIGHT", -2, 4)
+    ignBtn:SetFrameLevel(frame:GetFrameLevel() + 10)
+
+    local ignIcon = ignBtn:CreateTexture(nil, "ARTWORK")
+    ignIcon:SetAllPoints()
+    ignIcon:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_7")
+
+    local ignBorder = ignBtn:CreateTexture(nil, "BACKGROUND")
+    ignBorder:SetPoint("TOPLEFT", -1, 1)
+    ignBorder:SetPoint("BOTTOMRIGHT", 1, -1)
+    ignBorder:SetColorTexture(0, 0, 0, 0.8)
+
+    ignBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine("On ignore list", 1.0, 0.3, 0.3)
+        GameTooltip:Show()
+    end)
+    ignBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    ignBtn:Hide()
+    indicator.ignoreIcon = ignBtn
+
+    return indicator
+end
+
+local function UpdateIndicator(indicator, name, anchorFrame, anchorPoint, size, offsetY)
+    local showSilencer = false
+    local showIgnore = false
+
+    if name then
+        showSilencer = filteredPlayers[name] or false
+        showIgnore = IsPlayerOnIgnoreList(name)
+    end
+
+    if showSilencer then
+        indicator.silencerIcon:Show()
+    else
+        indicator.silencerIcon:Hide()
+    end
+
+    if showIgnore then
+        indicator.ignoreIcon:Show()
+    else
+        indicator.ignoreIcon:Hide()
+    end
+end
+
+function Silencer:UpdatePartyIndicators()
+    -- Update party frame indicators (PartyFrame.MemberFrame1-4)
+    local partyFrame = _G["PartyFrame"]
+    for i = 1, 4 do
+        local memberFrame = partyFrame and partyFrame["MemberFrame" .. i]
+
+        if memberFrame and memberFrame:IsVisible() then
+            if not partyIndicators[i] then
+                partyIndicators[i] = CreatePartyIndicator(memberFrame)
+            end
+
+            local indicator = partyIndicators[i]
+            if indicator then
+                local unitId = "party" .. i
+                local name = UnitName(unitId)
+                if not (name and UnitExists(unitId)) then name = nil end
+
+                UpdateIndicator(indicator, name)
+            end
+        else
+            local indicator = partyIndicators[i]
+            if indicator then
+                indicator.silencerIcon:Hide()
+                indicator.ignoreIcon:Hide()
+            end
+        end
+    end
+
+    -- Update compact raid frame indicators (CompactRaidGroup<G>Member<M>)
+    for g = 1, 8 do
+        for m = 1, 5 do
+            local frameName = "CompactRaidGroup" .. g .. "Member" .. m
+            local frame = _G[frameName]
+
+            if frame and frame.unit and frame:IsVisible() then
+                if not raidIndicators[frameName] then
+                    raidIndicators[frameName] = CreateRaidIndicator(frame)
+                end
+
+                local indicator = raidIndicators[frameName]
+                if indicator then
+                    local name = UnitName(frame.unit)
+                    if not UnitExists(frame.unit) then name = nil end
+
+                    UpdateIndicator(indicator, name)
+
+                    -- Adjust positioning for single icon (center it)
+                    local showSilencer = name and filteredPlayers[name]
+                    local showIgnore = name and IsPlayerOnIgnoreList(name)
+                    if showSilencer and showIgnore then
+                        indicator.silencerIcon:SetPoint("RIGHT", frame, "RIGHT", -2, -4)
+                        indicator.ignoreIcon:SetPoint("RIGHT", frame, "RIGHT", -2, 4)
+                    elseif showSilencer then
+                        indicator.silencerIcon:SetPoint("RIGHT", frame, "RIGHT", -2, 0)
+                    elseif showIgnore then
+                        indicator.ignoreIcon:SetPoint("RIGHT", frame, "RIGHT", -2, 0)
+                    end
+                end
+            else
+                -- Frame not visible or no unit, hide indicators if they exist
+                local indicator = raidIndicators[frameName]
+                if indicator then
+                    indicator.silencerIcon:Hide()
+                    indicator.ignoreIcon:Hide()
+                end
+            end
+        end
+    end
+end
+
+--------------------------------------------------------------
 -- Events
 --------------------------------------------------------------
 
@@ -825,6 +1118,8 @@ local eventFrame = CreateFrame("Frame")
 
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
+eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+eventFrame:RegisterEvent("IGNORELIST_UPDATE")
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         InitializeDB()
@@ -841,5 +1136,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
             or "OFF"
         print(ADDON_PREFIX .. "v" .. VERSION .. " loaded (" .. status .. "). Type |cFFFFFF00/sil|r for options.")
         self:UnregisterEvent("PLAYER_LOGIN")
+
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "IGNORELIST_UPDATE" then
+        Silencer:UpdatePartyIndicators()
     end
 end)
