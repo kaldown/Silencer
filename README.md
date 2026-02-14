@@ -22,6 +22,7 @@ Built for group building: broadcast "whisper me **help** for invite", then let S
 - **One-click invite** - Invite players directly from the queue
 - **Silenced message log** - Review non-matching whispers you might have missed
 - **Minimap button** - Left-click to toggle window, right-click to toggle filter
+- **Party/raid indicators** - Icons on party and raid frames show filtered and ignored players at a glance
 - **Slash commands** - `/sil on`, `/sil off`, `/sil keyword <word>`, `/sil status`
 
 ## Screenshots

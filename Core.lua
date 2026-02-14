@@ -341,16 +341,20 @@ SlashCmdList["SILENCER"] = function(msg)
 
         print(ADDON_PREFIX .. "--- Debug: Party frames ---")
         local pf = _G["PartyFrame"]
-        print("  PartyFrame=" .. tostring(pf and "exists" or "nil"))
+        print("  PartyFrame=" .. tostring(pf and "exists" or "nil") .. " vis=" .. tostring(pf and pf:IsVisible()) .. " shown=" .. tostring(pf and pf:IsShown()))
         for i = 1, 4 do
             local mf = pf and pf["MemberFrame" .. i]
             local name = UnitName("party" .. i)
             local vis = mf and mf:IsVisible()
+            local shown = mf and mf:IsShown()
             local ignored = name and IsPlayerOnIgnoreList(name) or false
             local filtered = name and filteredPlayers[name] or false
             local ind = partyIndicators[i]
-            local indShown = ind and (ind.ignoreIcon:IsShown() or ind.silencerIcon:IsShown()) or false
-            print("  MemberFrame" .. i .. " vis=" .. tostring(vis) .. " name=" .. tostring(name) .. " ign=" .. tostring(ignored) .. " filt=" .. tostring(filtered) .. " shown=" .. tostring(indShown))
+            local indIgn = ind and ind.ignoreIcon:IsShown() or false
+            local indSil = ind and ind.silencerIcon:IsShown() or false
+            local hooked = mf and mf._silencerHooked or false
+            print("  MF" .. i .. " frame=" .. tostring(mf and "yes" or "nil") .. " vis=" .. tostring(vis) .. " shown=" .. tostring(shown) .. " hooked=" .. tostring(hooked))
+            print("    name=" .. tostring(name) .. " ign=" .. tostring(ignored) .. " filt=" .. tostring(filtered) .. " indIgn=" .. tostring(indIgn) .. " indSil=" .. tostring(indSil))
         end
 
     else
@@ -1046,6 +1050,14 @@ function Silencer:UpdatePartyIndicators()
     for i = 1, 4 do
         local memberFrame = partyFrame and partyFrame["MemberFrame" .. i]
 
+        -- Hook OnShow to catch visibility changes after UI rebuilds
+        if memberFrame and not memberFrame._silencerHooked then
+            memberFrame:HookScript("OnShow", function()
+                C_Timer.After(0.1, function() Silencer:UpdatePartyIndicators() end)
+            end)
+            memberFrame._silencerHooked = true
+        end
+
         if memberFrame and memberFrame:IsVisible() then
             if not partyIndicators[i] then
                 partyIndicators[i] = CreatePartyIndicator(memberFrame)
@@ -1139,5 +1151,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "GROUP_ROSTER_UPDATE" or event == "IGNORELIST_UPDATE" then
         Silencer:UpdatePartyIndicators()
+        -- Retry after delays to handle frame visibility timing
+        C_Timer.After(0.5, function() Silencer:UpdatePartyIndicators() end)
+        C_Timer.After(2, function() Silencer:UpdatePartyIndicators() end)
     end
 end)
