@@ -2,7 +2,7 @@
 ## Title: Silencer
 ## Notes: Whisper gatekeeper - filter whispers by keyword, review matches, invite or dismiss
 ## Author: kaldown
-## Version: 0.2.1
+## Version: 0.3.0
 ## IconTexture: Interface\Icons\Spell_Holy_Silence
 ## SavedVariables: SilencerDB
 ## X-License: MIT
