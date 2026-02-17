@@ -953,6 +953,9 @@ function Silencer:CreateQueueRow(parent, index)
             if self.entryClassBlocked then
                 GameTooltip:AddLine("Blocked class", 1.0, 0.3, 0.3)
             end
+            if self.entryFilterReason then
+                GameTooltip:AddLine("Blocked words: " .. self.entryFilterReason, 1.0, 1.0, 0.2)
+            end
             GameTooltip:AddLine(self.fullMessage, 1, 1, 1, true)
             GameTooltip:Show()
         end
@@ -1016,6 +1019,33 @@ function Silencer:BuildFooter(parent)
         Silencer:UpdateCounterColors()
     end)
     self.silencedBtn = silencedBtn
+
+    -- Separator 2
+    local sep2 = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sep2:SetPoint("LEFT", silencedBtn, "RIGHT", 2, 0)
+    sep2:SetText("|")
+    sep2:SetTextColor(0.5, 0.5, 0.5)
+
+    -- Blocked-word counter (clickable)
+    local blockedWordBtn = CreateFrame("Button", nil, parent)
+    blockedWordBtn:SetPoint("LEFT", sep2, "RIGHT", 2, 0)
+    blockedWordBtn:SetSize(110, 16)
+    blockedWordBtn.text = blockedWordBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    blockedWordBtn.text:SetAllPoints()
+    blockedWordBtn.text:SetJustifyH("LEFT")
+    blockedWordBtn.text:SetText("0 blocked-word")
+    blockedWordBtn:SetScript("OnClick", function()
+        viewMode = "blockedword"
+        Silencer:UpdateList()
+        Silencer:UpdateCounters()
+    end)
+    blockedWordBtn:SetScript("OnEnter", function(btn)
+        btn.text:SetTextColor(1, 1, 1)
+    end)
+    blockedWordBtn:SetScript("OnLeave", function(btn)
+        Silencer:UpdateCounterColors()
+    end)
+    self.blockedWordBtn = blockedWordBtn
 end
 
 --------------------------------------------------------------
@@ -1026,7 +1056,14 @@ function Silencer:UpdateList()
     if not self.frame or not self.frame:IsShown() then return end
     if not self.scrollFrame then return end
 
-    local activeQueue = viewMode == "silenced" and silencedQueue or queue
+    local activeQueue
+    if viewMode == "blockedword" then
+        activeQueue = blockedWordQueue
+    elseif viewMode == "silenced" then
+        activeQueue = silencedQueue
+    else
+        activeQueue = queue
+    end
     local showInvite = viewMode == "matched"
     local numItems = #activeQueue
     local offset = FauxScrollFrame_GetOffset(self.scrollFrame)
@@ -1046,6 +1083,7 @@ function Silencer:UpdateList()
             row.entryClass = entry.class
             row.entryClassLocal = entry.classLocal
             row.entryClassBlocked = entry.classBlocked
+            row.entryFilterReason = entry.filterReason
 
             row.nameText:SetText(entry.name)
 
@@ -1079,6 +1117,7 @@ function Silencer:UpdateList()
             row.entryClass = nil
             row.entryClassLocal = nil
             row.entryClassBlocked = nil
+            row.entryFilterReason = nil
             row:Hide()
         end
     end
@@ -1099,6 +1138,9 @@ function Silencer:UpdateCounters()
     if self.silencedBtn then
         self.silencedBtn.text:SetText(#silencedQueue .. " silenced")
     end
+    if self.blockedWordBtn then
+        self.blockedWordBtn.text:SetText(#blockedWordQueue .. " blocked-word")
+    end
     self:UpdateCounterColors()
 end
 
@@ -1115,6 +1157,13 @@ function Silencer:UpdateCounterColors()
             self.silencedBtn.text:SetTextColor(1.0, 0.6, 0.2)
         else
             self.silencedBtn.text:SetTextColor(0.5, 0.5, 0.5)
+        end
+    end
+    if self.blockedWordBtn then
+        if viewMode == "blockedword" then
+            self.blockedWordBtn.text:SetTextColor(1.0, 0.3, 0.3)
+        else
+            self.blockedWordBtn.text:SetTextColor(0.5, 0.5, 0.5)
         end
     end
 end
@@ -1138,7 +1187,9 @@ end
 
 function Silencer:UpdateEmptyText()
     if self.emptyText then
-        if viewMode == "silenced" then
+        if viewMode == "blockedword" then
+            self.emptyText:SetText("No blocked-word whispers")
+        elseif viewMode == "silenced" then
             self.emptyText:SetText("No silenced whispers")
         else
             self.emptyText:SetText("No whispers matching '" .. (SilencerDB.keyword or "") .. "'")
