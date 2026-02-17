@@ -812,6 +812,7 @@ function Silencer:BuildBlockedWordsSection(parent)
     self.wordEmptyText = wordEmptyText
 
     self:UpdateBlockedWordsState()
+    self:UpdateBlockedWordsList()
 end
 
 function Silencer:AddBlockedWordFromEditBox(editBox)
