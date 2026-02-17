@@ -24,8 +24,10 @@ local silencedQueue = {}
 local silencedCount = 0
 local matchedCount = 0
 local filterRegistered = false
-local viewMode = "matched" -- "matched" or "silenced"
+local viewMode = "matched" -- "matched", "silenced", or "blockedword"
 local filteredPlayers = {} -- name -> true, tracks who Silencer has filtered this session
+local blockedWordQueue = {}
+local blockedWordCount = 0
 
 local function InitializeDB()
     SilencerDB.keyword = SilencerDB.keyword or "inv"
@@ -33,6 +35,9 @@ local function InitializeDB()
     SilencerDB.position = SilencerDB.position or nil
     SilencerDB.minimap = SilencerDB.minimap or { hide = false }
     SilencerDB.blockedClasses = SilencerDB.blockedClasses or {}
+    SilencerDB.blockedWords = SilencerDB.blockedWords or {}
+    SilencerDB.blockedWordsEnabled = SilencerDB.blockedWordsEnabled or false
+    SilencerDB.blockedWordsOverride = SilencerDB.blockedWordsOverride or false
 end
 
 --------------------------------------------------------------
