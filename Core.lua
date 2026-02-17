@@ -160,7 +160,7 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
     end
 
     local keyword = SilencerDB.keyword
-    if not keyword or keyword == "" then
+    if (not keyword or keyword == "") and not SilencerDB.blockedWordsEnabled then
         return false
     end
 
@@ -173,62 +173,62 @@ local function WhisperFilter(chatFrame, event, msg, playerName, ...)
         Silencer:UpdatePartyIndicators()
     end
 
-    if strlower(msg):find(strlower(keyword), 1, true) then
-        local isClassBlocked = class ~= "UNKNOWN" and SilencerDB.blockedClasses[class]
+    -- Check blocked words
+    local matchedBlockedWords = FindBlockedWords(msg)
 
-        local entry = {
-            name = name,
-            realm = realm or "",
-            fullName = playerName,
-            message = msg,
-            time = GetTime(),
-            class = class,
-            classLocal = classLocal,
-            classBlocked = isClassBlocked or false,
-        }
+    -- Check keyword match
+    local keywordMatch = keyword and keyword ~= ""
+        and strlower(msg):find(strlower(keyword), 1, true)
+
+    local entry = {
+        name = name,
+        realm = realm or "",
+        fullName = playerName,
+        message = msg,
+        time = GetTime(),
+        class = class,
+        classLocal = classLocal,
+    }
+
+    -- ROUTING DECISION
+    if matchedBlockedWords and (SilencerDB.blockedWordsOverride or not keywordMatch) then
+        -- Blocked words win: override enabled, OR no keyword match
+        entry.filterReason = table.concat(matchedBlockedWords, ", ")
+        blockedWordCount = blockedWordCount + 1
+        tinsert(blockedWordQueue, entry)
+        if #blockedWordQueue > MAX_QUEUE then
+            tremove(blockedWordQueue, 1)
+        end
+    elseif keywordMatch then
+        -- Keyword matched (blocked words either absent or override off)
+        local isClassBlocked = class ~= "UNKNOWN" and SilencerDB.blockedClasses[class]
+        entry.classBlocked = isClassBlocked or false
 
         if isClassBlocked then
-            -- Keyword matched but class blocked: route to silenced
             silencedCount = silencedCount + 1
             tinsert(silencedQueue, entry)
             if #silencedQueue > MAX_QUEUE then
                 tremove(silencedQueue, 1)
             end
         else
-            -- Keyword matched, class allowed: matched queue
             matchedCount = matchedCount + 1
             tinsert(queue, entry)
             if #queue > MAX_QUEUE then
                 tremove(queue, 1)
             end
         end
-
-        Silencer:UpdateList()
-        Silencer:UpdateCounters()
-        return true
     else
-        -- No match: store and suppress
+        -- No keyword match, no blocked words (or blocked words disabled)
         silencedCount = silencedCount + 1
-
-        local entry = {
-            name = name,
-            realm = realm or "",
-            fullName = playerName,
-            message = msg,
-            time = GetTime(),
-            class = class,
-            classLocal = classLocal,
-        }
-
         tinsert(silencedQueue, entry)
         if #silencedQueue > MAX_QUEUE then
             tremove(silencedQueue, 1)
         end
-
-        Silencer:UpdateList()
-        Silencer:UpdateCounters()
-        return true
     end
+
+    Silencer:UpdateList()
+    Silencer:UpdateCounters()
+    return true
 end
 
 function Silencer:EnableFilter(silent)
