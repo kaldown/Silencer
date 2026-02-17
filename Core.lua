@@ -536,7 +536,7 @@ function Silencer:CreateMainFrame()
 end
 
 --------------------------------------------------------------
--- Header: title, close, toggle, keyword
+-- Header: title, close, toggle, match word
 --------------------------------------------------------------
 
 function Silencer:BuildHeader(parent)
@@ -583,7 +583,7 @@ function Silencer:BuildHeader(parent)
         local text = strtrim(eb:GetText())
         if text ~= "" then
             SilencerDB.keyword = text
-            print(ADDON_PREFIX .. "Keyword set to: |cFFFFFF00" .. text .. "|r")
+            print(ADDON_PREFIX .. "Match word set to: |cFFFFFF00" .. text .. "|r")
             Silencer:UpdateEmptyText()
         end
         eb:ClearFocus()
@@ -1501,7 +1501,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1)
 
     elseif event == "PLAYER_LOGIN" then
         local status = isEnabled
-            and ("ON - keyword: |cFFFFFF00" .. (SilencerDB.keyword or "") .. "|r")
+            and ("ON - match word: |cFFFFFF00" .. (SilencerDB.keyword or "") .. "|r")
             or "OFF"
         print(ADDON_PREFIX .. "v" .. VERSION .. " loaded (" .. status .. "). Type |cFFFFFF00/sil|r for options.")
         self:UnregisterEvent("PLAYER_LOGIN")
