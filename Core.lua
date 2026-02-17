@@ -479,11 +479,13 @@ end
 --------------------------------------------------------------
 
 local FRAME_WIDTH = 380
-local FRAME_HEIGHT = 378
+local FRAME_HEIGHT = 450
 local ROW_HEIGHT = 28
 local VISIBLE_ROWS = 8
-local HEADER_HEIGHT = 88
+local HEADER_HEIGHT = 160
 local FOOTER_HEIGHT = 25
+local WORD_ROW_HEIGHT = 18
+local WORD_VISIBLE_ROWS = 3
 
 --------------------------------------------------------------
 -- Main frame
@@ -568,7 +570,7 @@ function Silencer:BuildHeader(parent)
     -- Keyword label
     local kwLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     kwLabel:SetPoint("TOPLEFT", 12, -38)
-    kwLabel:SetText("Keyword:")
+    kwLabel:SetText("Match word:")
     kwLabel:SetTextColor(0.7, 0.7, 0.7)
 
     -- Keyword editbox
@@ -594,6 +596,9 @@ function Silencer:BuildHeader(parent)
 
     -- Class filter toggle buttons
     self:BuildClassButtons(parent)
+
+    -- Blocked words section
+    self:BuildBlockedWordsSection(parent)
 end
 
 --------------------------------------------------------------
@@ -677,6 +682,173 @@ function Silencer:UpdateAllClassButtons()
     if not self.classButtons then return end
     for _, btn in ipairs(self.classButtons) do
         self:UpdateClassButton(btn)
+    end
+end
+
+--------------------------------------------------------------
+-- Blocked words UI section
+--------------------------------------------------------------
+
+function Silencer:BuildBlockedWordsSection(parent)
+    local yOffset = -90
+
+    -- "Blocked words" enable checkbox
+    local bwCheck = CreateFrame("CheckButton", "SilencerBWCheck", parent, "UICheckButtonTemplate")
+    bwCheck:SetSize(24, 24)
+    bwCheck:SetPoint("TOPLEFT", 8, yOffset)
+    bwCheck:SetChecked(SilencerDB.blockedWordsEnabled)
+    bwCheck:SetScript("OnClick", function(cb)
+        SilencerDB.blockedWordsEnabled = cb:GetChecked()
+        Silencer:UpdateBlockedWordsState()
+    end)
+    local bwLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    bwLabel:SetPoint("LEFT", bwCheck, "RIGHT", 2, 0)
+    bwLabel:SetText("Blocked words")
+    bwLabel:SetTextColor(0.9, 0.9, 0.9)
+    self.bwCheck = bwCheck
+    self.bwLabel = bwLabel
+
+    -- "Override match" checkbox
+    local ovCheck = CreateFrame("CheckButton", "SilencerOVCheck", parent, "UICheckButtonTemplate")
+    ovCheck:SetSize(24, 24)
+    ovCheck:SetPoint("LEFT", bwLabel, "RIGHT", 12, 0)
+    ovCheck:SetChecked(SilencerDB.blockedWordsOverride)
+    ovCheck:SetScript("OnClick", function(cb)
+        SilencerDB.blockedWordsOverride = cb:GetChecked()
+    end)
+    ovCheck:SetScript("OnEnter", function(btn)
+        GameTooltip:SetOwner(btn, "ANCHOR_TOP")
+        GameTooltip:AddLine("Override match", 1, 1, 1)
+        GameTooltip:AddLine("When enabled, blocked words always filter the message even if it contains your match word", 0.7, 0.7, 0.7, true)
+        GameTooltip:Show()
+    end)
+    ovCheck:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    local ovLabel = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    ovLabel:SetPoint("LEFT", ovCheck, "RIGHT", 2, 0)
+    ovLabel:SetText("Override match")
+    ovLabel:SetTextColor(0.9, 0.9, 0.9)
+    self.ovCheck = ovCheck
+    self.ovLabel = ovLabel
+
+    -- Word add editbox
+    local wordEditBox = CreateFrame("EditBox", "SilencerWordEditBox", parent, "InputBoxTemplate")
+    wordEditBox:SetSize(200, 20)
+    wordEditBox:SetPoint("TOPLEFT", 12, yOffset - 24)
+    wordEditBox:SetAutoFocus(false)
+    wordEditBox:SetScript("OnEnterPressed", function(eb)
+        Silencer:AddBlockedWordFromEditBox(eb)
+    end)
+    wordEditBox:SetScript("OnEscapePressed", function(eb)
+        eb:SetText("")
+        eb:ClearFocus()
+    end)
+    self.wordEditBox = wordEditBox
+
+    -- Add button
+    local addBtn = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+    addBtn:SetSize(45, 20)
+    addBtn:SetPoint("LEFT", wordEditBox, "RIGHT", 5, 0)
+    addBtn:SetText("Add")
+    addBtn:SetScript("OnClick", function()
+        Silencer:AddBlockedWordFromEditBox(self.wordEditBox)
+    end)
+    self.wordAddBtn = addBtn
+
+    -- Word list scroll frame
+    local listFrame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    listFrame:SetPoint("TOPLEFT", 8, yOffset - 48)
+    listFrame:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
+    listFrame:SetHeight(WORD_ROW_HEIGHT * WORD_VISIBLE_ROWS + 4)
+    listFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    listFrame:SetBackdropColor(0.05, 0.05, 0.05, 0.8)
+    listFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+
+    local wordScroll = CreateFrame("ScrollFrame", "SilencerWordScroll", listFrame, "FauxScrollFrameTemplate")
+    wordScroll:SetPoint("TOPLEFT", 2, -2)
+    wordScroll:SetPoint("BOTTOMRIGHT", -20, 2)
+    self.wordScroll = wordScroll
+
+    -- Word rows (pre-created, reused)
+    self.wordRows = {}
+    for i = 1, WORD_VISIBLE_ROWS do
+        local row = CreateFrame("Frame", nil, listFrame)
+        row:SetSize(listFrame:GetWidth() - 24, WORD_ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", wordScroll, "TOPLEFT", 0, -((i - 1) * WORD_ROW_HEIGHT))
+
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row.text:SetPoint("LEFT", 4, 0)
+        row.text:SetTextColor(1.0, 0.4, 0.4)
+
+        row.removeBtn = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.removeBtn:SetSize(18, 16)
+        row.removeBtn:SetPoint("RIGHT", -2, 0)
+        row.removeBtn:SetText("X")
+        row.removeBtn:SetScript("OnClick", function()
+            if row.wordIndex and SilencerDB.blockedWords[row.wordIndex] then
+                tremove(SilencerDB.blockedWords, row.wordIndex)
+                Silencer:UpdateBlockedWordsList()
+            end
+        end)
+
+        self.wordRows[i] = row
+    end
+
+    wordScroll:SetScript("OnVerticalScroll", function(sf, offset)
+        FauxScrollFrame_OnVerticalScroll(sf, offset, WORD_ROW_HEIGHT, function()
+            Silencer:UpdateBlockedWordsList()
+        end)
+    end)
+
+    -- Empty text for word list
+    local wordEmptyText = listFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    wordEmptyText:SetPoint("CENTER")
+    wordEmptyText:SetText("No blocked words")
+    wordEmptyText:SetTextColor(0.4, 0.4, 0.4)
+    self.wordEmptyText = wordEmptyText
+
+    self:UpdateBlockedWordsState()
+end
+
+function Silencer:AddBlockedWordFromEditBox(editBox)
+    local word = strtrim(editBox:GetText())
+    if word == "" then return end
+
+    if strlower(word) == strlower(SilencerDB.keyword or "") then
+        print(ADDON_PREFIX .. "|cFFFF4444Cannot add '" .. word .. "' - it's your active match word|r")
+        return
+    end
+
+    for _, existing in ipairs(SilencerDB.blockedWords) do
+        if strlower(existing) == strlower(word) then
+            print(ADDON_PREFIX .. "|cFFFF4444'" .. word .. "' is already in blocked words|r")
+            return
+        end
+    end
+
+    tinsert(SilencerDB.blockedWords, word)
+    editBox:SetText("")
+    editBox:ClearFocus()
+    self:UpdateBlockedWordsList()
+end
+
+function Silencer:UpdateBlockedWordsState()
+    if not self.ovCheck then return end
+    local enabled = SilencerDB.blockedWordsEnabled
+    if enabled then
+        self.ovCheck:Enable()
+        self.ovLabel:SetTextColor(0.9, 0.9, 0.9)
+        self.wordEditBox:Enable()
+        self.wordAddBtn:Enable()
+    else
+        self.ovCheck:Disable()
+        self.ovLabel:SetTextColor(0.4, 0.4, 0.4)
+        self.wordEditBox:Disable()
+        self.wordAddBtn:Disable()
     end
 end
 
@@ -975,7 +1147,32 @@ function Silencer:UpdateEmptyText()
 end
 
 function Silencer:UpdateBlockedWordsList()
-    -- Will be implemented with UI
+    if not self.wordScroll then return end
+
+    local words = SilencerDB.blockedWords
+    local numWords = #words
+    local offset = FauxScrollFrame_GetOffset(self.wordScroll)
+
+    FauxScrollFrame_Update(self.wordScroll, numWords, WORD_VISIBLE_ROWS, WORD_ROW_HEIGHT)
+
+    for i = 1, WORD_VISIBLE_ROWS do
+        local row = self.wordRows[i]
+        local index = offset + i
+        if index <= numWords then
+            row.wordIndex = index
+            row.text:SetText(words[index])
+            row:Show()
+        else
+            row.wordIndex = nil
+            row:Hide()
+        end
+    end
+
+    if numWords == 0 then
+        self.wordEmptyText:Show()
+    else
+        self.wordEmptyText:Hide()
+    end
 end
 
 --------------------------------------------------------------
