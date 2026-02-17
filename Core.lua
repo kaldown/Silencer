@@ -135,6 +135,25 @@ local function GetSenderClass(guid)
     return "UNKNOWN", "Unknown"
 end
 
+local function FindBlockedWords(msg)
+    if not SilencerDB.blockedWordsEnabled then return nil end
+    local words = SilencerDB.blockedWords
+    if not words or #words == 0 then return nil end
+
+    local matched = {}
+    for _, word in ipairs(words) do
+        -- Exact substring first (UTF-8 safe), strlower fallback
+        if msg:find(word, 1, true) or strlower(msg):find(strlower(word), 1, true) then
+            tinsert(matched, word)
+        end
+    end
+
+    if #matched > 0 then
+        return matched
+    end
+    return nil
+end
+
 local function WhisperFilter(chatFrame, event, msg, playerName, ...)
     if not isEnabled then
         return false
