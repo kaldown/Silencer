@@ -240,11 +240,12 @@ function Silencer:EnableFilter(silent)
     SilencerDB.enabled = true
     silencedCount = 0
     matchedCount = 0
+    blockedWordCount = 0
     viewMode = "matched"
     self:UpdateToggleButton()
     self:UpdateCounters()
     if not silent then
-        print(ADDON_PREFIX .. "Filter ON - keyword: |cFFFFFF00" .. (SilencerDB.keyword or "") .. "|r")
+        print(ADDON_PREFIX .. "Filter ON - match word: |cFFFFFF00" .. (SilencerDB.keyword or "") .. "|r")
     end
 end
 
@@ -257,9 +258,11 @@ function Silencer:DisableFilter()
     SilencerDB.enabled = false
     wipe(queue)
     wipe(silencedQueue)
+    wipe(blockedWordQueue)
     wipe(filteredPlayers)
     silencedCount = 0
     matchedCount = 0
+    blockedWordCount = 0
     viewMode = "matched"
     self:UpdateList()
     self:UpdateToggleButton()
@@ -325,9 +328,11 @@ SlashCmdList["SILENCER"] = function(msg)
     elseif msg == "clear" then
         wipe(queue)
         wipe(silencedQueue)
+        wipe(blockedWordQueue)
         wipe(filteredPlayers)
         matchedCount = 0
         silencedCount = 0
+        blockedWordCount = 0
         Silencer:UpdateList()
         Silencer:UpdateCounters()
         Silencer:UpdatePartyIndicators()
