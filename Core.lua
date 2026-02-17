@@ -304,13 +304,87 @@ SlashCmdList["SILENCER"] = function(msg)
         if newKeyword and newKeyword ~= "" then
             SilencerDB.keyword = newKeyword
             Silencer:UpdateKeywordDisplay()
-            print(ADDON_PREFIX .. "Keyword set to: |cFFFFFF00" .. newKeyword .. "|r")
+            print(ADDON_PREFIX .. "Match word set to: |cFFFFFF00" .. newKeyword .. "|r")
+        end
+
+    elseif msg:match("^match%s+") then
+        local newKeyword = strtrim(msg:match("^match%s+(.+)"))
+        if newKeyword and newKeyword ~= "" then
+            -- Check if new match word is in blocked words list
+            for i, word in ipairs(SilencerDB.blockedWords) do
+                if strlower(word) == strlower(newKeyword) then
+                    print(ADDON_PREFIX .. "|cFFFF4444Warning:|r '" .. newKeyword .. "' is also a blocked word - blocked word filter will not catch it while it's the match word")
+                    break
+                end
+            end
+            SilencerDB.keyword = newKeyword
+            Silencer:UpdateKeywordDisplay()
+            print(ADDON_PREFIX .. "Match word set to: |cFFFFFF00" .. newKeyword .. "|r")
+        end
+
+    elseif msg:match("^words%s*") then
+        local subcmd = strtrim(msg:match("^words%s*(.*)") or "")
+
+        if subcmd:match("^add%s+") then
+            local word = strtrim(subcmd:match("^add%s+(.+)"))
+            if not word or word == "" then
+                print(ADDON_PREFIX .. "Usage: /sil words add <word>")
+            elseif strlower(word) == strlower(SilencerDB.keyword or "") then
+                print(ADDON_PREFIX .. "|cFFFF4444Cannot add '" .. word .. "' - it's your active match word|r")
+            else
+                -- Check for duplicate (case-insensitive)
+                for _, existing in ipairs(SilencerDB.blockedWords) do
+                    if strlower(existing) == strlower(word) then
+                        print(ADDON_PREFIX .. "|cFFFF4444'" .. word .. "' is already in blocked words|r")
+                        Silencer:UpdateBlockedWordsList()
+                        return
+                    end
+                end
+                tinsert(SilencerDB.blockedWords, word)
+                print(ADDON_PREFIX .. "Added blocked word: |cFFFF4444" .. word .. "|r")
+                Silencer:UpdateBlockedWordsList()
+            end
+
+        elseif subcmd:match("^remove%s+") then
+            local word = strtrim(subcmd:match("^remove%s+(.+)"))
+            if not word or word == "" then
+                print(ADDON_PREFIX .. "Usage: /sil words remove <word>")
+            else
+                for i, existing in ipairs(SilencerDB.blockedWords) do
+                    if strlower(existing) == strlower(word) then
+                        tremove(SilencerDB.blockedWords, i)
+                        print(ADDON_PREFIX .. "Removed blocked word: |cFFFF4444" .. existing .. "|r")
+                        Silencer:UpdateBlockedWordsList()
+                        return
+                    end
+                end
+                print(ADDON_PREFIX .. "'" .. word .. "' not found in blocked words")
+            end
+
+        elseif subcmd == "list" then
+            if #SilencerDB.blockedWords == 0 then
+                print(ADDON_PREFIX .. "No blocked words")
+            else
+                print(ADDON_PREFIX .. "Blocked words: |cFFFF4444" .. table.concat(SilencerDB.blockedWords, ", ") .. "|r")
+            end
+
+        elseif subcmd == "clear" then
+            wipe(SilencerDB.blockedWords)
+            print(ADDON_PREFIX .. "Blocked words cleared")
+            Silencer:UpdateBlockedWordsList()
+
+        else
+            print(ADDON_PREFIX .. "Words commands: add <word>, remove <word>, list, clear")
         end
 
     elseif msg == "status" then
         print(ADDON_PREFIX .. "Status: " .. (isEnabled and "|cFF00FF00ON|r" or "|cFFFF0000OFF|r"))
-        print(ADDON_PREFIX .. "Keyword: |cFFFFFF00" .. (SilencerDB.keyword or "(none)") .. "|r")
-        print(ADDON_PREFIX .. "Queue: " .. #queue .. " matched | " .. silencedCount .. " silenced")
+        print(ADDON_PREFIX .. "Match word: |cFFFFFF00" .. (SilencerDB.keyword or "(none)") .. "|r")
+        if #SilencerDB.blockedWords > 0 then
+            local bwStatus = SilencerDB.blockedWordsEnabled and "|cFF00FF00ON|r" or "|cFFFF0000OFF|r"
+            print(ADDON_PREFIX .. "Blocked words (" .. bwStatus .. "): |cFFFF4444" .. table.concat(SilencerDB.blockedWords, ", ") .. "|r")
+        end
+        print(ADDON_PREFIX .. "Queue: " .. #queue .. " matched | " .. silencedCount .. " silenced | " .. #blockedWordQueue .. " blocked-word")
 
     elseif msg == "block" then
         local blocked = {}
@@ -391,10 +465,12 @@ SlashCmdList["SILENCER"] = function(msg)
         print("  /sil - Toggle window")
         print("  /sil on - Enable filter")
         print("  /sil off - Disable filter")
-        print("  /sil keyword <word> - Set keyword")
+        print("  /sil match <word> - Set match word")
+        print("  /sil keyword <word> - Set match word (alias)")
+        print("  /sil words add|remove|list|clear - Manage blocked words")
         print("  /sil block - Show blocked classes")
         print("  /sil status - Show status")
-        print("  /sil clear - Clear queue")
+        print("  /sil clear - Clear queues")
     end
 end
 
@@ -896,6 +972,10 @@ function Silencer:UpdateEmptyText()
             self.emptyText:SetText("No whispers matching '" .. (SilencerDB.keyword or "") .. "'")
         end
     end
+end
+
+function Silencer:UpdateBlockedWordsList()
+    -- Will be implemented with UI
 end
 
 --------------------------------------------------------------
