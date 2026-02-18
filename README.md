@@ -11,6 +11,8 @@ Other addons:
 - [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer
 - [VendorSniper](https://www.curseforge.com/wow/addons/vendorsniper) - Vendor restock sniper
 - [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
+- [PickMe](https://www.curseforge.com/wow/addons/pickme) - LFG listing browser
+- [EyesOnMe](https://www.curseforge.com/wow/addons/eyesonme) - PvP targeting awareness
 
 Whisper gatekeeper for World of Warcraft Classic. Set a keyword, and Silencer intercepts all incoming whispers - matching ones go to a review queue for quick invite, everything else is silenced.
 
