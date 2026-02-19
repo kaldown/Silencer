@@ -1,11 +1,11 @@
-## Interface: 11503, 20505
+## Interface: 11508, 20505
 ## Title: Silencer
 ## Notes: Whisper gatekeeper - filter whispers by keyword, review matches, invite or dismiss
 ## Author: kaldown
-## Version: 0.4.0
+## Version: 0.5.0
 ## IconTexture: Interface\Icons\Spell_Holy_Silence
 ## SavedVariables: SilencerDB
-## X-License: MIT
+## X-License: All Rights Reserved
 ## X-Curse-Project-ID: 1459086
 ## X-Wago-ID: n6VLMZGd
 

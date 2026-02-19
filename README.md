@@ -10,7 +10,7 @@ If you find this useful, consider supporting development via [PayPal](https://ww
 
 Other addons:
 - [LazyProf](https://www.curseforge.com/wow/addons/lazyprof) - Profession leveling optimizer
-- [VendorSniper](https://www.curseforge.com/wow/addons/vendorsniper) - Vendor restock sniper
+- [VendorSniper](https://addons.wago.io/addons/vendorsniper) - Vendor restock sniper
 - [CraftLib](https://www.curseforge.com/wow/addons/craftlib) - Recipe database
 - [PickMe](https://www.curseforge.com/wow/addons/pickme) - LFG listing browser
 - [EyesOnMe](https://www.curseforge.com/wow/addons/eyesonme) - PvP targeting awareness
