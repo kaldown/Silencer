@@ -28,6 +28,7 @@ local viewMode = "matched" -- "matched", "silenced", or "blockedword"
 local filteredPlayers = {} -- name -> true, tracks who Silencer has filtered this session
 local blockedWordQueue = {}
 local blockedWordCount = 0
+local wasShownBeforeCombat = false -- track if frame was open when combat started
 
 local function InitializeDB()
     SilencerDB.keyword = SilencerDB.keyword or "inv"
@@ -1232,6 +1233,7 @@ end
 --------------------------------------------------------------
 
 function Silencer:ShowFrame()
+    if InCombatLockdown() then return end
     if not self.frame then
         self:CreateMainFrame()
     end
@@ -1242,12 +1244,14 @@ function Silencer:ShowFrame()
 end
 
 function Silencer:HideFrame()
+    if InCombatLockdown() then return end
     if self.frame then
         self.frame:Hide()
     end
 end
 
 function Silencer:ToggleFrame()
+    if InCombatLockdown() then return end
     if self.frame and self.frame:IsShown() then
         self:HideFrame()
     else
@@ -1490,8 +1494,26 @@ eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("IGNORELIST_UPDATE")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
-    if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- Combat started: hide the frame if visible
+        if Silencer.frame and Silencer.frame:IsShown() then
+            wasShownBeforeCombat = true
+            Silencer.frame:Hide()
+        end
+        return
+
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        -- Combat ended: re-show the frame if it was open before combat
+        if wasShownBeforeCombat then
+            wasShownBeforeCombat = false
+            Silencer:ShowFrame()
+        end
+        return
+
+    elseif event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         InitializeDB()
         LDBIcon:Register("Silencer", dataObject, SilencerDB.minimap)
         isEnabled = SilencerDB.enabled
